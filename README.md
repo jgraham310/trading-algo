@@ -121,6 +121,7 @@ rally reverses.
 python -m trading_algo.mandate           # the policy report
 python -m trading_algo.mandate --demo    # self-check, no download
 python -m trading_algo.stress            # 153 start dates, not one
+python -m trading_algo.intake            # the queued research hypothesis
 ```
 
 $1,000,000 initial, 5.4%/yr taken in equal monthly dollars, 2000–2026:
@@ -218,6 +219,39 @@ matters. Either way the policy's 5.4% has headroom.
 > samples than to 153, and every window contains both 2000–02 and 2008, which is
 > why worst and median drawdown are identical. The shorter horizons carry more
 > genuine variation. No amount of resampling one market's history fixes this.
+
+### Research intake: AT-2026-09-13-photonics — rejected
+
+`research_sources/annualize_this/` defines an intake contract for an external
+research source: hypotheses only, levels defined without chart reading, frozen
+point-in-time universe, equal-weight *and* equal-time-in-market controls, costs,
+holdouts, no tuning after results. `python -m trading_algo.intake` implements
+exactly that, and nothing else.
+
+**The universe cannot be tested, only the rule.** The 22 symbols were written on
+2026-09-13 by someone who knows which photonics companies still exist. Ten of
+the nineteen with data traded in 2000; the optical-networking bust that
+destroyed the sector in 2000–02 — JDSU, Corvis, New Focus, Avanex and dozens
+more — appears in the list through its survivors alone. Its 163x equal-weight
+headline is that selection, not a sector return, and unlike `stocks.py` there is
+no point-in-time photonics index to correct against. What *is* honest is the
+rule against the same basket, where the survivorship gift cancels on both sides.
+
+| rule minus equal-time-in-market control | Sharpe spread | withdrawal-adj DD spread |
+|---|---|---|
+| 10 / 13 / 20 / 26 / 52-week lookback | −0.08 / −0.10 / −0.13 / −0.07 / −0.17 | +10.6% / +11.8% / +8.4% / +15.9% / +14.9% |
+| 2000–2013 | **+0.05** | **+14.6%** |
+| 2014–2026 | **−0.34** | **−19.3%** |
+
+Rejected on three counts. **No timing skill** — beaten by its own equal-time
+control at 0 of 5 lookbacks, and at 1.6x/yr turnover cost isn't the cause (the
+spread is −0.12 to −0.15 across 5–40bp). **The drawdown edge doesn't replicate**
+— it looked like +8 to +16 points on the policy's own criterion, then reversed
+sign out of sample. **Unsuitable regardless** — −51% withdrawal-adjusted
+drawdown at 22% volatility, against −19% at 9% for the existing SPY rule.
+
+The verdict is recorded in the intake register itself, which is where the
+contract says it belongs.
 
 ## Sharpe > 2, long-only US equities, 25 years — answered
 

@@ -2,7 +2,7 @@
 
     python test_timing.py
 """
-from trading_algo import engine, mandate, options, overfit, stocks, stress, timing
+from trading_algo import engine, intake, mandate, options, overfit, stocks, stress, timing
 
 engine.demo()   # backtest conventions, session split, leakage tripwire
 timing.demo()   # signal warmup, look-ahead, sleeve behaviour
@@ -11,4 +11,5 @@ overfit.demo()  # condition bank cannot read the future; position is lagged one 
 options.demo()  # put-call parity identity; recovered premia are real option prices
 mandate.demo()  # withdrawal schedule, depletion, drawdowns deepen not shrink
 stress.demo()   # window boundaries; sustainable rate tracks the growth rate
+intake.demo()   # weekly levels cannot see the week they trade on
 print("all ok")
