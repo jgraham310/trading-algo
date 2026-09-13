@@ -1,7 +1,7 @@
 # Investment Policy and Operating Mandate
 
 **Owner:** Jason Graham
-**Last confirmed:** 2026-09-13
+**Last confirmed:** 2026-09-13 (options scope and withdrawal definition amended 2026-09-13)
 **Status:** governing requirement for all research, backtests, signal design, and future execution work in this repository.
 
 ## Objective
@@ -21,6 +21,16 @@ rate**, paid as equal monthly withdrawals:
 | Annual withdrawal | 5.4% of the account value per year |
 | Monthly withdrawal | 0.45% of the applicable annual account value per month |
 | Withdrawal frequency | Monthly, equal-dollar installments |
+
+*Definition confirmed 2026-09-13.* The rule above admitted three readings that
+give materially different results. Jason confirmed the intended one:
+**the annual withdrawal is set on 1 January at 5.4% of the account value on that
+date, and paid in twelve equal dollar instalments over the following year.**
+Income therefore varies year to year with the account and resets lower after a
+bad year. This is `annual_reset` in `trading_algo/mandate.py`, which is the
+default; the two rejected readings (`fixed_nominal`, `pct_current`) remain
+implemented and are reported as sensitivity, because the choice moves maximum
+drawdown by up to 30 points for some strategies.
 
 All strategy evaluation must model these withdrawals explicitly. Performance,
 maximum drawdown, recovery time, liquidity, and failure scenarios must be
@@ -43,9 +53,28 @@ portfolio.
 4. **Liquidity-aware:** retain sufficient readily available cash or liquid
    holdings to satisfy scheduled withdrawals without forcing an avoidable sale
    during a drawdown. Test this explicitly.
-5. **Conservative constraints:** no leverage, shorting, margin borrowing, or
-   options unless Jason explicitly amends this policy in writing. Position and
-   turnover limits must be configured and tested before live execution.
+5. **Conservative constraints:** no leverage, shorting, or margin borrowing.
+   Position and turnover limits must be configured and tested before live
+   execution.
+
+   *Options — amended 2026-09-13 by Jason's explicit decision.* Jason authorised
+   covered call writing, and subsequently the purchase of puts, for evaluation.
+   Both were evaluated over 2000–2026 and **both are excluded from the strategy
+   on the evidence**:
+
+   - Covered calls: CBOE BXM scores Sharpe 0.32 against 0.41 for the index
+     itself; the call leg costs −3.78%/yr. Overlaid on the strategy it takes
+     Sharpe 0.70 → 0.65.
+   - Long puts: derived exactly from real BXM prices via put-call parity, a
+     1-month ATM protective put is Sharpe-neutral (0.43 vs 0.43). It halves
+     volatility and halves return. Bolted onto the timing rule it *subtracts*
+     (0.87 → 0.65), because holding cash removes the same downside at ~0.5%/yr
+     against the put's ~3%/yr.
+
+   No option position is used by the current strategy. Writing calls or buying
+   puts in live execution requires a further amendment here. Selling puts,
+   spreads, and any short option position other than a covered call remain
+   prohibited. See `trading_algo/options.py` and the README.
 6. **Costs and taxes:** backtests must include realistic commissions, spread,
    slippage, and, where applicable, tax assumptions. Assumptions must be named
    alongside results.
