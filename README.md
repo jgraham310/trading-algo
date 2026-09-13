@@ -103,6 +103,136 @@ python -m trading_algo.xsec       # cross-sectional: does the stage RANK names?
 python -c "from trading_algo.sweep import vol_terciles, vol_report; print(vol_report(vol_terciles()))"
 ```
 
+## Sharpe > 2, long-only US equities, 25 years — answered
+
+**It is not reachable, and the ceiling is provable in one number.** A strategy
+that is told in advance whether each calendar *month* will be up, and is fully
+long or fully flat accordingly, scores **Sharpe 2.04** over 2000–2026. Perfect
+monthly foresight *only just* clears 2. Any long/flat rule on a broad US equity
+index that beats 2 must therefore time the market better than an oracle with a
+month of hindsight.
+
+```bash
+python -m trading_algo.timing --ceiling
+```
+
+```
+PERFECT FORESIGHT, long/flat, at each decision horizon:
+  knows every daily      sign in advance -> Sharpe  8.85
+  knows every weekly     sign in advance -> Sharpe  3.85
+  knows every monthly    sign in advance -> Sharpe  2.04
+  knows every quarterly  sign in advance -> Sharpe  1.38
+
+DAILY DIRECTIONAL SKILL required (base rate = always long = 54.2% right):
+  Sharpe 0.71 needs 52.8% of days called right   <- this repo's strategy
+  Sharpe 1.0  needs 54.7%
+  Sharpe 2.0  needs 61.4%
+
+INFORMATION COEFFICIENT  corr(weight, next-day excess return) = +0.040
+  fundamental law, Sharpe ~ IC * sqrt(252):  0.63 (realised 0.71)
+  Sharpe 2.0 would need IC = 0.126, 3.2x this signal, held for 25 years.
+  Or 8 INDEPENDENT sleeves this good -- long-only, one index, they do not exist.
+```
+
+Three independent framings, same answer: the monthly oracle, the required daily
+hit rate (+7pp of genuine skill over the base rate, sustained a quarter century),
+and the fundamental law. Sharpe is also *estimated*, not observed — 26 years of
+daily bars gives a standard error of **±0.19**, so "2" sits nearly seven
+standard errors above what the best rule here actually delivers.
+
+## The strategy that does survive
+
+```bash
+python -m trading_algo.engine --fetch    # once: 30y of daily bars into data/ (gitignored)
+python -m trading_algo.timing            # full report, all robustness tables
+python -m trading_algo.timing --demo     # self-check, no download
+```
+
+Long/flat SPY, weight in [0, 1], decided at each close and held one day. Two
+sleeves averaged 50/50 (`trading_algo/timing.py`):
+
+* **TREND** — close above its own MA, averaged over 100/150/200/250 days so the
+  weight steps down rather than betting on one window. On ~72% of the time,
+  negative skew, 8 turns/yr.
+* **MEANREV** — close at a 3/5/10-day low, held one day. On ~22% of the time,
+  **positive** skew (+3.1), and where most of the return per unit of exposure
+  lives. It is also the expensive half: ~65 turns/yr.
+
+Daily return correlation between the sleeves is 0.32, which is the whole reason
+the blend beats either.
+
+| 2bp/unit traded, excess of T-bills | years | ann excess | vol | **Sharpe** | max DD | exposure |
+|---|---|---|---|---|---|---|
+| **TIMING** | 26.6 | +5.99% | 8.8% | **0.71** ± 0.19 | −16.3% | 48% |
+| buy & hold | 26.6 | +6.45% | 19.2% | 0.42 | −59.9% | 100% |
+| **TIMING**, strict last 25y | 24.9 | +6.79% | 8.6% | **0.81** | −13.9% | 49% |
+| buy & hold, strict last 25y | 24.9 | +8.47% | 18.9% | 0.52 | −56.1% | 100% |
+
+Sub-periods 0.37 / 0.95 / 0.82 (2000-08 / 09-17 / 18-26); rolling 3-year Sharpe
+is negative 1% of the time. **It does not beat buy & hold on return** — it gives
+up ~0.5%/yr of excess return to cut volatility by half and drawdown by a third.
+Every number above is net of costs and net of T-bills.
+
+Blend weight is flat from 0.25 to 0.50 (0.71–0.72), so 50/50 is a plateau, not a
+peak. The binding fragility is **cost**: Sharpe runs 0.78 / 0.74 / 0.71 / 0.60 /
+0.41 at 0/1/2/5/10 bp. Above ~8bp all-in the mean-reversion sleeve stops paying.
+SPY at retail size is ~1bp; anything less liquid kills it.
+
+### Negative results — don't re-derive these
+
+Scored identically, same bars, same cost model, excess of T-bills.
+
+* **Covered calls make it worse.** BXM (buy-write on SPX) scores Sharpe 0.32 vs
+  0.41 for SPX itself over 2000–2026; the call leg alone is −3.78%/yr at 9.6%
+  vol. Overlaid on the strategy's persistent (21-day-minimum) weight it takes
+  0.70 → 0.65. It buys skew (+0.24 → +0.57) and costs return. The one permitted
+  form of leverage is a Sharpe *reducer* on this window.
+* **The overnight anomaly is entirely a transaction cost illusion.** Night
+  (close→open) excess return is +5.1%/yr against −0.7%/yr intraday — but
+  night-only trades 504x/yr. At 0.5bp/side Sharpe is 0.33, at 1bp it is 0.10, at
+  2bp it is −0.35. `engine.sessions()` splits the day and charges every boundary
+  crossing, which is what the earlier version of this analysis failed to do.
+* **Diversifying across US equity ETFs dilutes, it does not diversify.** The
+  same rule equal-weighted over SPY/QQQ/IWM + 9 sector SPDRs scores 0.61 vs 0.76
+  for SPY alone on the same bars (those start 2000-05-30 when IWM lists, which is
+  why SPY alone reads 0.76 there and 0.71 from January); SPY/QQQ/IWM alone 0.72.
+  Index-level mean reversion is stronger than sector-level, where idiosyncratic
+  momentum eats it.
+* **Cross-sectional mean reversion across sectors:** best 0.46, worse than the
+  0.48 equal-weight buy & hold it is built from.
+* **Sector momentum** (12-1, top 2/3/4, monthly): 0.49 / 0.55 / 0.49 — no better
+  than a plain MA200, and a trend overlay on top made every variant worse.
+* **Volatility targeting hurts.** Scaling the blend by min(1, target/realised
+  vol) takes 0.71 → 0.64–0.67 for targets 8–12%. Without leverage it can only
+  cut exposure, and it cuts return faster than volatility.
+* **Every orthogonal macro/seasonal sleeve diluted it.** Variance risk premium
+  (VIX − realised vol), 10y−3m term spread, and Nov–Apr seasonality each score
+  0.38–0.46 standalone, and each *lowered* the blend when added (0.71 → 0.58–0.64).
+* **Conditioning mean-reversion made it worse**, all of it: sizing by dip depth
+  (0.69), gating on high VIX (0.62), gating on low VIX (0.58), requiring the
+  trend filter to agree (0.48).
+* **Turn-of-month** (0.31), day-of-week (best 0.12), n-sigma dip thresholds
+  (0.16–0.39): real but too weak to survive blending.
+
+### Scoring rules, fixed once
+
+`trading_algo/engine.py`. Everything above is scored the same way, which is the
+only reason the numbers are comparable:
+
+* **Excess of T-bills**, always — `exret = r_asset − rf` from `^IRX`. Idle cash
+  earns the bill rate and therefore contributes exactly zero. Without this, a
+  strategy that sits in cash buys Sharpe for free off the 2000s rate curve.
+* `w[t]` is decided from data up to and *including* the close of `t`, and earns
+  `t+1`'s return. `run()` rejects any short or any row summing above 1.
+* Costs in bp on `|dw|`, charged at the bar the trade happens.
+* `timing.demo()` asserts the signal cannot read the future by recomputing it on
+  a truncated series and requiring every already-decided weight to be identical.
+
+> **Caveat that no backtest removes:** the mean-reversion sleeve's parameters
+> were chosen knowing the full sample. Its stability across three disjoint
+> ~9-year sub-periods (0.62 / 0.66 / 0.65 on the sleeve alone) is the argument
+> that it is not fitted, and it is an argument, not a proof.
+
 ## Connecting other data sources
 
 TimesFM 3.0 takes covariates natively. Anything you connect has to become a
@@ -131,8 +261,8 @@ longer, and is *only* for things genuinely known ahead — calendar effects, ind
 rebalance dates, scheduled announcements. If you can't say why you know a value
 in advance, it belongs in `past`.
 
-Checks: `python test_signal.py && python test_backtest.py && python
-test_sources.py` (model stubbed, no download). The alignment and leakage tests
+Checks: `python test_timing.py && python test_signal.py && python test_backtest.py
+&& python test_sources.py` (model stubbed, no download). The alignment and leakage tests
 are the ones worth keeping.
 
 > **License:** TimesFM 3.0 *weights* are `timesfm-non-commercial-license-v1.0` —
