@@ -140,10 +140,61 @@ and the fundamental law. Sharpe is also *estimated*, not observed — 26 years o
 daily bars gives a standard error of **±0.19**, so "2" sits nearly seven
 standard errors above what the best rule here actually delivers.
 
+That bounds one axis — choosing *when* to hold the market. Choosing *what* to
+hold needs its own bound, because a 400-name portfolio has far more breadth than
+one long/flat index bet. `python -m trading_algo.stocks` bounds it two ways:
+
+**Perfect hindsight static selection.** Rank all 503 of today's S&P 500 members
+by their realised 2001–2026 return, buy the best k in 2001, hold 25 years. This
+is the answer sheet; no selection rule can beat it.
+
+| bought with 25 years of hindsight | ann excess | vol | Sharpe |
+|---|---|---|---|
+| best 1 name (MNST, +34%/yr) | +33.7% | 42.8% | 0.89 |
+| best 5 | +38.9% | 29.8% | 1.25 |
+| **best 10** | +38.0% | 25.6% | **1.39** |
+| best 50 | +25.8% | 22.6% | 1.13 |
+| SPY | +8.2% | 19.0% | 0.51 |
+
+**Knowing the winners in advance tops out at Sharpe 1.39.** Concentration adds
+return and volatility together, so it moves the numerator and denominator at
+once and the ratio peaks around k=10. Long-only cannot short the losers, so
+market beta stays in the portfolio and the volatility floor stays around 20%;
+Sharpe 2 would need ~40%/yr excess at that vol, sustained 25 years, which even
+the answer sheet does not deliver.
+
+**And the universe is rigged in our favour.** It is today's members only, so
+every name that collapsed and left the index is missing. RSP is the identical
+equal-weight S&P 500 portfolio built point-in-time:
+
+| 2003–2026, identical construction | ann excess | Sharpe |
+|---|---|---|
+| RSP (point-in-time) | +9.40% | 0.55 |
+| equal-weight *today's* members | +16.20% | 0.86 |
+| **survivorship gift** | **+6.80%/yr** | **+0.30** |
+
+Real rules on that inflated universe (5bp/unit, monthly, top 50): momentum 12-1
+**0.92** (top 20: 1.03), 5-day reversal 0.85, low-vol 0.71, 1-month reversal
+0.69, equal-weight 0.82. Bolting the index-timing rule on top as an exposure
+scalar gives the best combination found anywhere in this repo — momentum ×
+TIMING at **Sharpe 0.97**, +11.5%/yr excess, 12.0% vol, −19.2% max drawdown —
+and that 0.97 still contains the +0.30 survivorship gift, so call it **~0.67**
+honestly. Two is 5.1 standard errors above even the unadjusted figure.
+
+So both axes are bounded, and neither reaches 2:
+
+| | perfect-foresight ceiling | best real rule here |
+|---|---|---|
+| **timing** (when to hold) | 2.04 (monthly oracle) | 0.71 / 0.81 over the strict 25y |
+| **selection** (what to hold) | 1.39 (25y hindsight, best 10) | 0.97 biased, ~0.67 adjusted |
+
+
+
 ## The strategy that does survive
 
 ```bash
 python -m trading_algo.engine --fetch    # once: 30y of daily bars into data/ (gitignored)
+python -m trading_algo.stocks --fetch    # once: ~500 S&P names, for the selection bound
 python -m trading_algo.timing            # full report, all robustness tables
 python -m trading_algo.timing --demo     # self-check, no download
 ```
@@ -213,6 +264,10 @@ Scored identically, same bars, same cost model, excess of T-bills.
   trend filter to agree (0.48).
 * **Turn-of-month** (0.31), day-of-week (best 0.12), n-sigma dip thresholds
   (0.16–0.39): real but too weak to survive blending.
+* **Stock selection does not rescue it** (`trading_algo/stocks.py`): every
+  long-only cross-sectional rule tested lands between 0.69 and 1.03 *on a
+  survivorship-biased universe worth +0.30 of Sharpe*, and the perfect-hindsight
+  static portfolio itself only reaches 1.39.
 
 ### Scoring rules, fixed once
 

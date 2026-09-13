@@ -8,6 +8,8 @@ dependencies = [
     "pandas>=2.0",
     "yfinance>=0.2.50",
     "statsmodels>=0.14",
+    "requests>=2.31",
+    "lxml>=5.0",
 ]
 
 [build-system]
