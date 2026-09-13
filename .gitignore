@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.pyc
+wf_*.csv
+sweep_basket.csv
+*.bak
