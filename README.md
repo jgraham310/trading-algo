@@ -2,6 +2,12 @@
 
 Forecasting engine: [TimesFM 3.0](https://github.com/google-research/timesfm/releases/tag/v3.0.0).
 
+> **Portfolio mandate:** [`INVESTMENT_POLICY.md`](INVESTMENT_POLICY.md) governs
+> all work in this repository. The strategy is drawdown-first and must be
+> evaluated with the owner's 5.4% annual withdrawal rate, paid in equal monthly
+> installments. This repository is research-only until an explicitly approved
+> live-execution configuration passes its validation gates.
+
 ```bash
 uv venv && uv pip install -e .
 ```
