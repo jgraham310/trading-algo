@@ -120,6 +120,7 @@ rally reverses.
 ```bash
 python -m trading_algo.mandate           # the policy report
 python -m trading_algo.mandate --demo    # self-check, no download
+python -m trading_algo.stress            # 153 start dates, not one
 ```
 
 $1,000,000 initial, 5.4%/yr taken in equal monthly dollars, 2000–2026:
@@ -165,6 +166,58 @@ spell, which move smoothly.
 > and both are Sharpe-negative, so nothing depends on it, but the document and
 > the instruction disagree. (2) The withdrawal rule admits three readings; the
 > default here is `annual_reset`.
+
+### Sequence stress: 153 start dates, not one
+
+One 26-year path is one sample, and January 2000 happens to be near the worst
+entry available — which flatters nothing but proves nothing either. `^SP500TR`
+is the S&P 500 total-return index, real and assumption-free back to 1988 (it
+tracks SPY to 0.985 daily correlation; the 0.13%/yr gap is SPY's expense ratio),
+so 25-year windows can start anywhere in 1988–2001.
+
+```bash
+python -m trading_algo.stress
+```
+
+| 25-year windows, 5.4%/yr withdrawn | worst final x | median final x | **worst maxDD** | recover | depleted |
+|---|---|---|---|---|---|
+| **TIMING** | 1.38 | 1.71 | **−25.3%** | 38 mo | **0 of 153** |
+| buy & hold | 1.40 | **2.48** | −68.9% | 85 mo | 0 of 153 |
+
+**Say the unflattering part first: buy & hold delivers more in the median** —
+4.72x total against 3.55x, counting income taken. The timing rule is insurance,
+and the premium is roughly 1.2x of median lifetime wealth. What it buys shows up
+at the horizons where a withdrawal plan actually fails:
+
+| worst outcome over any start | TIMING final x | buy & hold final x |
+|---|---|---|
+| 5-year windows (394 starts) | 0.82 | 0.51 |
+| **10-year windows (334 starts)** | **0.88** | **0.37** |
+| 15-year windows (273 starts) | 1.18 | 0.75 |
+| 25-year windows (153 starts) | 1.38 | 1.40 |
+
+Ten years of withdrawals from the worst entry leaves buy & hold at **37 cents on
+the dollar** and the timing rule at 88. Over a full 25 years the two converge on
+terminal wealth — but a plan that spends a decade down 63% is not one anyone
+keeps following, and the policy's whole point is the path, not the endpoint.
+
+Entering at the exact top:
+
+| entry | TIMING final / maxDD | buy & hold final / maxDD |
+|---|---|---|
+| 2000-03 dot-com top | 1.59 / −22.8% | 1.40 / −69.0% |
+| 2007-10 GFC top (18y) | 1.76 / −20.8% | 2.30 / −59.1% |
+
+**Sustainable withdrawal rate** (ends at ≥ the starting $1m after 25 years):
+TIMING supports 7.2–8.1%, buy & hold 6.7–9.6%. At the *worst* entry (March 2000)
+TIMING supports **7.2% against buy & hold's 6.7%** — it wins exactly where it
+matters. Either way the policy's 5.4% has headroom.
+
+> **Read the sample size honestly.** 153 starts drawn from 38 years of one
+> market share nearly all their bars: that is closer to 1.5 independent 25-year
+> samples than to 153, and every window contains both 2000–02 and 2008, which is
+> why worst and median drawdown are identical. The shorter horizons carry more
+> genuine variation. No amount of resampling one market's history fixes this.
 
 ## Sharpe > 2, long-only US equities, 25 years — answered
 

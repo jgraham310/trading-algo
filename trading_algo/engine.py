@@ -24,10 +24,15 @@ DATA = Path(__file__).resolve().parent.parent / "data"
 
 PANEL = ["SPY", "QQQ", "IWM", "RSP", "XLB", "XLE", "XLF", "XLI", "XLK", "XLP", "XLU",
          "XLV", "XLY", "TLT", "IEF", "SHY", "GLD", "HYG", "LQD",
-         "^VIX", "^VIX3M", "^IRX", "^TNX", "^FVX", "^GSPC", "^BXM", "^PUT"]
+         "^VIX", "^VIX3M", "^IRX", "^TNX", "^FVX", "^GSPC", "^BXM", "^PUT",
+         # ^SP500TR is the S&P 500 TOTAL RETURN index back to 1988 -- five years
+         # more than SPY and the only assumption-free way to stress start dates
+         # before 1993. It tracks SPY to 0.985 daily correlation, the 0.13%/yr
+         # gap being SPY's expense ratio.
+         "^SP500TR"]
 
 
-def fetch(start="1996-01-01") -> None:
+def fetch(start="1985-01-01") -> None:
     """Refresh data/{close,open}.csv. ~13MB, gitignored, re-runnable."""
     import yfinance as yf
 
