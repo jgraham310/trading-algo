@@ -10,6 +10,7 @@ dependencies = [
     "statsmodels>=0.14",
     "requests>=2.31",
     "lxml>=5.0",
+    "scipy>=1.11",
 ]
 
 [build-system]

@@ -18,7 +18,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from .engine import TRADING_DAYS, excess, load, rf, sharpe_se, stats
+from .engine import TRADING_DAYS, excess, load, report, rf, sharpe_se, stats
 
 SPLIT = "2014-01-01"
 
@@ -153,6 +153,84 @@ def main(n_rules=200_000, terms=3, cost_bps=2.0):
           "  end in the same place, which is why this repo reports 0.81 and stops.")
 
 
+def best_blend(cost_bps: float = 2.0, stock_bps: float = 5.0):
+    """The best Sharpe ANY combination of this repo's sleeves can reach.
+
+    Builds every sleeve built anywhere here, then solves for the convex
+    combination (non-negative weights summing to 1 -- no leverage) that
+    maximises Sharpe, using hindsight on every mean and covariance in the
+    sample. No blending scheme can beat this, including one that works. Any
+    honest out-of-sample blend lands below it.
+    """
+    from scipy.optimize import minimize
+
+    from .stocks import START, panel
+    from .timing import backtest as tbt, weight as tw
+
+    px, ex, live = panel()
+    m = px.index >= pd.Timestamp(START)
+    tim = tw(load()["SPY"]).reindex(px.index)
+    spx = load()["SPY"]
+    xs = excess(["SPY"], start=START)
+
+    def stk(w, overlay):
+        w = w.mul(overlay.reindex(w.index).fillna(0), axis=0) if overlay is not None else w
+        W = w[m]
+        turn = W.diff().abs().sum(axis=1).shift(1).fillna(0)
+        return ((W.shift(1) * ex[m]).sum(axis=1) - turn * stock_bps / 1e4).iloc[1:]
+
+    def eqw(trig):
+        t = trig.where(live).fillna(False)
+        return t.astype(float).div(t.sum(axis=1).replace(0, np.nan), axis=0).fillna(0.0)
+
+    def spy(w):
+        from .engine import run
+        return run(pd.DataFrame({"SPY": pd.Series(w, index=xs.index).fillna(0).clip(0, 1)}),
+                   xs, cost_bps)
+
+    sl = {"buy&hold": spy(pd.Series(1.0, index=xs.index)),
+          "timing": tbt(START, None, cost_bps)[0],
+          "spy_trend": spy(pd.concat([spx > spx.rolling(n).mean() for n in (100, 150, 200, 250)],
+                                     axis=1).mean(axis=1).reindex(xs.index)),
+          "spy_meanrev": spy(pd.concat([spx <= spx.rolling(n).min() for n in (3, 5, 10)],
+                                       axis=1).mean(axis=1).reindex(xs.index))}
+    mom, vol = px.shift(21) / px.shift(252) - 1, -ex.rolling(120).std()
+    key = pd.Series(px.index, index=px.index).dt.to_period("M")
+    for nm, sig in (("stk_mom", mom), ("stk_lowvol", vol)):
+        rk = sig.where(live).rank(axis=1, ascending=False)
+        w = (rk <= 50).astype(float)
+        w = w.div(w.sum(axis=1).replace(0, np.nan), axis=0).where(key != key.shift(-1)).ffill().fillna(0.0)
+        sl[nm], sl[nm + "_x_tim"] = stk(w, None), stk(w, tim)
+    for n in (3, 10):
+        t = eqw(px <= px.rolling(n).min())
+        sl[f"stk_mr{n}"], sl[f"stk_mr{n}_x_tim"] = stk(t, None), stk(t, tim)
+
+    R = pd.DataFrame(sl).dropna()
+    mu, C = R.mean().values * TRADING_DAYS, R.cov().values * TRADING_DAYS
+    n = len(mu)
+    res = minimize(lambda w: -(w @ mu) / np.sqrt(w @ C @ w), np.ones(n) / n, method="SLSQP",
+                   bounds=[(0, 1)] * n, constraints=[{"type": "eq", "fun": lambda w: w.sum() - 1}],
+                   options={"maxiter": 1000, "ftol": 1e-12})
+    return R, res.x, -res.fun
+
+
+def blend_report():
+    R, w, sh = best_blend()
+    print(f"{R.shape[1]} sleeves, {len(R)} bars {R.index[0].date()}..{R.index[-1].date()}\n")
+    print(report({k: {**stats(R[k]), "se": sharpe_se(R[k])} for k in R}))
+    tri = R.corr().values[np.triu_indices(R.shape[1], 1)]
+    print(f"\nsleeve correlations: mean {tri.mean():+.2f}, min {tri.min():+.2f} -- they are all\n"
+          f"  long equity beta, which is why combining them buys so little.\n")
+    c = R.values @ w
+    print(f"EX-POST OPTIMAL convex blend (hindsight on every mean and covariance, no leverage):")
+    print(f"  Sharpe {sh:.2f}   ann excess {(1 + c).prod() ** (TRADING_DAYS / len(c)) - 1:+.2%}"
+          f"   vol {c.std() * np.sqrt(TRADING_DAYS):.1%}")
+    print("  weights:", {k: round(v, 3) for k, v in sorted(zip(R.columns, w), key=lambda kv: -kv[1]) if v > 0.01})
+    print(f"\n  No blending scheme can beat {sh:.2f}, because this one already cheated. The\n"
+          f"  winning sleeves are the single-stock ones, which carry the +0.30 survivorship\n"
+          f"  gift on top. Out of sample it lands lower, not higher.")
+
+
 def demo():
     """Self-check: the search machinery is not itself leaking."""
     x = excess(["SPY"], start="2015-01-01")["SPY"]
@@ -185,4 +263,9 @@ def demo():
 
 if __name__ == "__main__":
     import sys
-    demo() if "--demo" in sys.argv else main()
+    if "--demo" in sys.argv:
+        demo()
+    elif "--blend" in sys.argv:
+        blend_report()
+    else:
+        main()

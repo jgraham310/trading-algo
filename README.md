@@ -116,6 +116,7 @@ month of hindsight.
 python -m trading_algo.timing --ceiling   # why timing cannot get there
 python -m trading_algo.stocks             # why selection cannot either
 python -m trading_algo.overfit            # what searching for it actually produces
+python -m trading_algo.overfit --blend   # the best any combination can do
 ```
 
 ```
@@ -194,13 +195,24 @@ point of real cost removes 0.15 of Sharpe: 1.24 at 1bp, **0.66 at the ~5bp
 single stocks actually cost**. An impossible frictionless version of the
 highest-breadth strategy available still does not reach 2.
 
-So all three axes are bounded, and none reaches 2:
+**And no combination of any of it reaches 2 either.** `python -m
+trading_algo.overfit --blend` builds all 12 sleeves built anywhere in this repo
+and solves for the convex combination (non-negative weights summing to 1 — no
+leverage) that maximises Sharpe *using hindsight on every mean and covariance in
+the sample*. No blending scheme can beat it, including one that would work out
+of sample. It reaches **Sharpe 1.01** (+11.8%/yr, 11.7% vol), and it gets there
+by putting 77% of the weight on single-stock sleeves that carry the +0.30
+survivorship gift. Mean pairwise sleeve correlation is **+0.68** — they are all
+long equity beta, which is precisely why combining them buys so little.
+
+So every axis is bounded, and none reaches 2:
 
 | | perfect-foresight ceiling | best real rule here |
 |---|---|---|
 | **timing** (when to hold) | 2.04 (monthly oracle) | 0.71 / 0.81 over the strict 25y |
 | **selection** (what to hold) | 1.39 (25y hindsight, best 10) | 0.97 biased, ~0.67 adjusted |
 | **breadth** (how many bets) | 1.39 (zero cost, 500 names, biased) | 0.42 at 5bp single-stock cost |
+| **combination** (blending it all) | 1.01 (ex-post optimal, biased) | 0.97 best single sleeve |
 
 ### "Just keep searching until something hits 2"
 
