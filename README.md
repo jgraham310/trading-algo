@@ -109,6 +109,63 @@ python -m trading_algo.xsec       # cross-sectional: does the stage RANK names?
 python -c "from trading_algo.sweep import vol_terciles, vol_report; print(vol_report(vol_terciles()))"
 ```
 
+## The governing objective is drawdown, not Sharpe
+
+`INVESTMENT_POLICY.md` ranks strategies by **withdrawal-adjusted downside** under
+a 5.4%/yr equal-monthly withdrawal. Sharpe is blind to the thing that actually
+destroys an income portfolio — sequence-of-returns risk — so it cannot answer
+that question. Selling units into a 56% drawdown is permanent damage no later
+rally reverses.
+
+```bash
+python -m trading_algo.mandate           # the policy report
+python -m trading_algo.mandate --demo    # self-check, no download
+```
+
+$1,000,000 initial, 5.4%/yr taken in equal monthly dollars, 2000–2026:
+
+| strategy | ret | vol | maxDD no wd | maxDD acct | maxDD delivered | recover mths | final x | paid x | **total x** | forced sales |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **TIMING** | +8.2% | 8.9% | −12.8% | **−19.4%** | **−8.7%** | **23** | 1.92 | 1.77 | **3.69** | **3** |
+| MA200 only | +7.2% | 11.4% | −22.8% | −42.6% | −21.4% | 59 | 1.48 | 1.29 | 2.77 | 201 |
+| static 50/50 | +5.6% | 9.6% | −30.6% | −47.9% | −21.5% | 62 | 1.00 | 1.14 | 2.14 | 0 |
+| buy & hold SPY | +8.5% | 19.2% | −55.2% | −69.1% | −43.2% | 85 | 2.04 | 1.32 | 3.36 | 265 |
+
+**Buy & hold depletes the account entirely** — to zero on 2025-03-03 — under the
+fixed-dollar reading of the withdrawal. Under every reading it spends 85 months
+recovering and forces a sale into a drawdown 265 times. The timing rule survives
+all three readings, and it also **delivers the most total value** (3.69x against
+buy & hold's 3.36x), which the Sharpe framing had scored as "gives up 0.5%/yr".
+Under the mandate that conclusion inverts.
+
+Two findings worth keeping:
+
+* **The timing rule is self-hedging for liquidity.** Three forced sales in 27
+  years against buy & hold's 265, because it holds cash exactly when the market
+  is down — which is when a withdrawal would otherwise sell units cheap. A
+  separate cash buffer changes nothing (identical at 0/3/6/12 months): the
+  strategy's own cash sleeve is either ~0 or far larger than a year of income.
+* **Account-value drawdown cannot measure duration for an income portfolio.** It
+  saturates near 95% time-under-water by construction, since an account paying
+  out 5.4%/yr rarely makes new highs. The honest measure is drawdown of *account
+  + income already paid* — total wealth delivered — which is the `maxDD
+  delivered` and `recover mths` columns.
+
+The blend moved **0.50 → 0.40** on this evidence: it minimises delivered-wealth
+drawdown (−8.7% vs −9.6%), recovers in 23 months instead of 33, and hands over
+3.69x instead of 3.51x, at identical Sharpe (0.72). The curve is flat from 0.35
+to 0.50 on every one of those measures, so it is a plateau, not a pick. Note
+that "longest underwater" alone is a knife-edge statistic — it swings 51 → 109
+months on small blend changes — so steer by % time under water and the median
+spell, which move smoothly.
+
+> **Two policy items need your decision, Jason** — see the end of this section.
+> (1) `INVESTMENT_POLICY.md` §5 forbids options absent a written amendment, but
+> the brief authorised covered calls and later long puts. The research is done
+> and both are Sharpe-negative, so nothing depends on it, but the document and
+> the instruction disagree. (2) The withdrawal rule admits three readings; the
+> default here is `annual_reset`.
+
 ## Sharpe > 2, long-only US equities, 25 years — answered
 
 **It is not reachable, and the ceiling is provable in one number.** A strategy

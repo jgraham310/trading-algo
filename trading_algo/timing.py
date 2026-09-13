@@ -12,7 +12,8 @@ times (daily return correlation 0.32):
   It is also the cost-sensitive half: ~65 turns a year.
 
 Everything else tried made it worse and is recorded in the README. The blend is
-50/50 because the curve is flat from 0.35 to 0.65, not because 0.50 won.
+0.40 because that is where withdrawal-adjusted drawdown bottoms out under
+`INVESTMENT_POLICY.md`; Sharpe is flat from 0.35 to 0.50 either way.
 
     python -m trading_algo.timing          # full report
     python -m trading_algo.timing --demo   # self-check, no download
@@ -27,9 +28,15 @@ from .engine import TRADING_DAYS, excess, load, report, rf, score, run, sharpe_s
 
 TREND = (100, 150, 200, 250)
 MEANREV = (3, 5, 10)
+# 0.40, not 0.50: INVESTMENT_POLICY.md ranks on withdrawal-adjusted drawdown, and
+# 0.40 minimises drawdown of delivered wealth (-8.7% vs -9.6%), recovers in 23
+# months instead of 33, and hands over 3.69x instead of 3.51x -- at the same
+# Sharpe. The curve is flat from 0.35 to 0.50 on every one of those measures, so
+# this is a plateau, not a pick. See `python -m trading_algo.mandate`.
+BLEND = 0.40
 
 
-def weight(px: pd.Series, blend: float = 0.5, trend=TREND, meanrev=MEANREV) -> pd.Series:
+def weight(px: pd.Series, blend: float = BLEND, trend=TREND, meanrev=MEANREV) -> pd.Series:
     """Target SPY weight in [0, 1], decided at the close of each bar.
 
     Uses only closes up to and including that bar. Feed it the LONGEST price
@@ -43,7 +50,7 @@ def weight(px: pd.Series, blend: float = 0.5, trend=TREND, meanrev=MEANREV) -> p
     return w.where(s.rolling(max(trend)).mean().notna())  # NaN until warm, never 0
 
 
-def backtest(start="2000-01-01", end=None, cost_bps: float = 2.0, blend: float = 0.5,
+def backtest(start="2000-01-01", end=None, cost_bps: float = 2.0, blend: float = BLEND,
              ticker: str = "SPY", **kw) -> tuple[pd.Series, pd.DataFrame, pd.DataFrame]:
     """Net excess returns, the weights that produced them, and excess returns."""
     w_full = weight(load()[ticker], blend, **kw)
@@ -67,7 +74,8 @@ def main(start="2000-01-01", cost_bps: float = 2.0):
     print(report({"TIMING": {**score(w, x, cost_bps)},
                   "buy & hold": {**_row(bh), "exposure": 1.0, "ann_turnover": 0.0}}))
 
-    print("\n-- blend sensitivity (0 = pure mean-reversion, 1 = pure trend)")
+    print("\n-- blend sensitivity (0 = pure mean-reversion, 1 = pure trend); see")
+    print("   `python -m trading_algo.mandate` for the drawdown-first view that picks 0.40")
     print(report({f"blend {b:.2f}": score(
         pd.DataFrame({"SPY": weight(load()["SPY"], b).reindex(x.index)}), x, cost_bps)
         for b in (0.0, 0.25, 0.35, 0.5, 0.65, 0.75, 1.0)}))
@@ -170,7 +178,7 @@ def demo():
 
     # a pure step-up series is always in trend and never at an n-day low
     up = pd.Series(np.arange(1, 801, dtype=float), index=idx)
-    assert (weight(up).dropna() == 0.5).all(), "trend sleeve mis-scored on a monotone rise"
+    assert (weight(up).dropna() == BLEND).all(), "trend sleeve mis-scored on a monotone rise"
     assert (weight(up, blend=0.0).dropna() == 0.0).all(), "mean-rev fired on a monotone rise"
     dn = pd.Series(np.arange(800, 0, -1, dtype=float), index=idx)
     assert (weight(dn, blend=0.0).dropna() == 1.0).all(), "mean-rev missed a monotone fall"
