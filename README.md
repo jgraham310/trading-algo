@@ -183,12 +183,24 @@ TIMING at **Sharpe 0.97**, +11.5%/yr excess, 12.0% vol, −19.2% max drawdown �
 and that 0.97 still contains the +0.30 survivorship gift, so call it **~0.67**
 honestly. Two is 5.1 standard errors above even the unadjusted figure.
 
-So both axes are bounded, and neither reaches 2:
+**Breadth does not rescue it either.** The fundamental law says Sharpe scales
+with the square root of the number of independent bets, so the strongest
+remaining candidate is the mean-reversion rule applied *per stock across all
+~500 names at once* — on any given day 70–210 of them sit at an n-day low, which
+is orders of magnitude more breadth than a monthly top-50 ranking. Run with
+**transaction costs switched off entirely**, on the survivorship-biased
+universe, it tops out at **Sharpe 1.39**. It turns over 340x/yr, so every basis
+point of real cost removes 0.15 of Sharpe: 1.24 at 1bp, **0.66 at the ~5bp
+single stocks actually cost**. An impossible frictionless version of the
+highest-breadth strategy available still does not reach 2.
+
+So all three axes are bounded, and none reaches 2:
 
 | | perfect-foresight ceiling | best real rule here |
 |---|---|---|
 | **timing** (when to hold) | 2.04 (monthly oracle) | 0.71 / 0.81 over the strict 25y |
 | **selection** (what to hold) | 1.39 (25y hindsight, best 10) | 0.97 biased, ~0.67 adjusted |
+| **breadth** (how many bets) | 1.39 (zero cost, 500 names, biased) | 0.42 at 5bp single-stock cost |
 
 ### "Just keep searching until something hits 2"
 

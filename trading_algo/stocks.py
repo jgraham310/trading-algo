@@ -117,6 +117,35 @@ def bias() -> dict:
             "SPY": _row(c["SPY"].reindex(idx).pct_change().sub(f, axis=0))}
 
 
+def frictionless(cost_bps: float = 0.0) -> dict:
+    """The highest-breadth family there is, run with costs switched OFF.
+
+    Per-stock mean reversion across ~500 names at once: on any given day 70-210
+    of them are at an n-day low, so this has orders of magnitude more breadth
+    than a monthly top-50 ranking, which is where the fundamental law says the
+    Sharpe should be. Run at 0bp it is a physical impossibility on a
+    survivorship-biased universe -- a strict upper bound twice over.
+    """
+    px, ex, live = panel()
+    m = px.index >= pd.Timestamp(START)
+    tim = timing_weight(load()["SPY"]).reindex(px.index)
+
+    def ew(trig, overlay):
+        t = trig.where(live).fillna(False)
+        w = t.astype(float).div(t.sum(axis=1).replace(0, np.nan), axis=0).fillna(0.0)
+        return w if overlay is None else w.mul(overlay.reindex(w.index).fillna(0), axis=0)
+
+    out = {}
+    for n in (2, 3, 5, 10, 20):
+        for overlay, tag in ((None, ""), (tim, " x TIMING")):
+            w = ew(px <= px.rolling(n).min(), overlay)[m]
+            turn = w.diff().abs().sum(axis=1).shift(1).fillna(0)
+            net = ((w.shift(1) * ex[m]).sum(axis=1) - turn * cost_bps / 1e4).iloc[1:]
+            out[f"{n}d low{tag}"] = _row(net, exposure=float(w.sum(axis=1).mean()),
+                                         ann_turnover=float(turn.sum() / len(w) * TRADING_DAYS))
+    return out
+
+
 def main():
     px, ex, live = panel()
     print(f"universe: {px.shape[1]} of today's S&P 500, {px.index[0].date()}..{px.index[-1].date()}\n")
@@ -161,6 +190,17 @@ def main():
          for n, s in (("momentum 12-1", mom), ("low-vol", vol), ("mom+lowvol", comp))}
     r["EW universe x TIMING"] = backtest(ew, 10 ** 9, "M", 5.0, overlay=tim)
     print(report(r))
+    print("\nCEILING 3 -- the highest-breadth family, with COSTS SWITCHED OFF entirely:")
+    fr = frictionless(0.0)
+    print(report(dict(sorted(fr.items(), key=lambda kv: -kv[1]["sharpe"])[:6])))
+    fb = max(fr.values(), key=lambda v: v["sharpe"])
+    per_bp = fb["ann_turnover"] * 1e-4 / fb["ann_vol"]
+    print(f"  ~500 names, 70-210 of them triggered on any day -- far more breadth than a\n"
+          f"  monthly top-50 ranking, and still only {fb['sharpe']:.2f} at zero cost on a\n"
+          f"  survivorship-biased universe. It turns over {fb['ann_turnover']:.0f}x/yr, so each\n"
+          f"  basis point of real cost removes {per_bp:.2f} of Sharpe: {fb['sharpe'] - per_bp:.2f} at 1bp,\n"
+          f"  {fb['sharpe'] - 5 * per_bp:.2f} at the 5bp single stocks actually cost.\n")
+
     best = max(r.values(), key=lambda v: v["sharpe"])
     print(f"\n  Best: Sharpe {best['sharpe']:.2f} -- on a universe that gets {ds:+.2f} of Sharpe\n"
           f"  for free from survivorship. Adjusted, roughly {best['sharpe'] - ds:.2f}, and 2.0 is\n"
