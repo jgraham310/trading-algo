@@ -113,7 +113,9 @@ index that beats 2 must therefore time the market better than an oracle with a
 month of hindsight.
 
 ```bash
-python -m trading_algo.timing --ceiling
+python -m trading_algo.timing --ceiling   # why timing cannot get there
+python -m trading_algo.stocks             # why selection cannot either
+python -m trading_algo.overfit            # what searching for it actually produces
 ```
 
 ```
@@ -187,6 +189,41 @@ So both axes are bounded, and neither reaches 2:
 |---|---|---|
 | **timing** (when to hold) | 2.04 (monthly oracle) | 0.71 / 0.81 over the strict 25y |
 | **selection** (what to hold) | 1.39 (25y hindsight, best 10) | 0.97 biased, ~0.67 adjusted |
+
+### "Just keep searching until something hits 2"
+
+`python -m trading_algo.overfit` — 164,183 randomly drawn 3-condition long/flat
+rules on SPY, built from 79 individually sensible conditions (trend, breakouts,
+mean reversion, volatility regime, calendar), fitted on 2000–2013 and then
+checked on 2014–2026.
+
+```
+IN-SAMPLE Sharpe across the search: median -0.01, 95th pct +0.48, MAX +0.97
+  rules clearing Sharpe 2 in-sample: 0 of 164,183
+```
+
+**Not one.** Brute force cannot even *manufacture* Sharpe 2 here, given 14 years
+of hindsight and no obligation to work afterwards. The target is not hiding in
+the space; the space does not contain it.
+
+What the search does show is the cost of looking. The top 25 rules average
+**+0.91 in-sample and +0.30 over the next 12.7 years** — a 0.61 shrinkage that is
+selection, not skill — and in-sample rank correlates only **+0.145** with what a
+rule does next. For calibration, the best of N independent zero-edge rules lands
+near +0.81 at N=100 and +1.41 at N=1,000,000 on luck alone. A search big enough
+to surface a 2 is a search big enough to fabricate one.
+
+The repo's own strategy, scored identically: **+0.59 in-sample (98th percentile
+of the search), +0.85 out of sample.** It *gained* 0.26 out of sample where the
+search winners lost 0.61 — which is the argument that it is a rule rather than a
+draw. It is also still nowhere near 2.
+
+> A bug worth recording: the first version of `overfit.py` bypassed
+> `engine.run()` for speed and multiplied each position by *its own* bar's
+> return instead of the next one. It reported a winner of `ret1_up AND ret1_up
+> AND ret1_up` at Sharpe 8.5 with a +0.98 IS/OOS correlation. `demo()` now
+> asserts that "today closed up" scores below 1.0, because an off-by-one is the
+> cheapest way in the world to produce a Sharpe 2.
 
 
 
