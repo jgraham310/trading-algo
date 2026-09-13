@@ -123,6 +123,7 @@ python -m trading_algo.timing --ceiling   # why timing cannot get there
 python -m trading_algo.stocks             # why selection cannot either
 python -m trading_algo.overfit            # what searching for it actually produces
 python -m trading_algo.overfit --blend   # the best any combination can do
+python -m trading_algo.options           # what buying puts does (nothing, for Sharpe)
 ```
 
 ```
@@ -295,6 +296,53 @@ Blend weight is flat from 0.25 to 0.50 (0.71–0.72), so 50/50 is a plateau, not
 peak. The binding fragility is **cost**: Sharpe runs 0.78 / 0.74 / 0.71 / 0.60 /
 0.41 at 0/1/2/5/10 bp. Above ~8bp all-in the mean-reversion sleeve stops paying.
 SPY at retail size is ~1bp; anything less liquid kills it.
+
+### Buying puts does not change the answer either
+
+`python -m trading_algo.options` — and the useful half of it needs **no
+option-pricing model at all**. BXM is a real published buy-write (long SPX,
+short a 1-month ATM call, rolled on expiry Friday), and put-call parity then
+pins the matching ATM *put* exactly from realised index and BXM returns:
+
+```
+BXM payoff over the month = min(S1, K)
+protective put payoff     = max(S1, K)      and the two sum to S1 + K
+```
+
+No Black-Scholes, no implied vol, no skew guess. The derivation recovers a
+1-month ATM call at **1.93% of spot** and put at **1.78%** — which is what SPX
+options actually cost, and `demo()` asserts the parity identity holds to 1e-9.
+
+| monthly rolls, excess of T-bills | ann excess | vol | Sharpe | max DD | skew |
+|---|---|---|---|---|---|
+| SPY | +6.19% | 17.6% | **0.43** | −52.6% | −1.24 |
+| SPY + ATM put | +3.21% | 8.2% | **0.43** | −32.3% | **+1.09** |
+| TIMING (cash when out) | +5.91% | 6.9% | **0.87** | −13.0% | −0.76 |
+| TIMING + put on held weight | +3.94% | 6.3% | 0.65 | −11.2% | +3.71 |
+| 100% long, put when signal low | +4.76% | 12.3% | 0.44 | −36.9% | −0.92 |
+
+**Buying ATM puts is Sharpe-neutral.** Half the volatility, half the return,
+skew −1.24 → +1.09, drawdown −53% → −32%. That is a real risk transformation and
+worth buying if drawdown is the constraint — but it is not Sharpe, which is what
+efficiently priced insurance looks like. Bolted onto the timing rule it
+*subtracts*: 0.87 → 0.65, because sitting in cash already removes the downside
+and costs ~0.5%/yr against the put's ~3%/yr. Using puts as the risk-off vehicle
+instead of cash is much worse (0.44 vs 0.87), and buying them only when cheap
+does not rescue it.
+
+Collars (long OTM put + short OTM call — both legs now permitted) need strikes
+parity cannot pin, so they need a model, and that is exactly where option
+backtests go to die:
+
+| 95/105 collar, same months | ann excess | vol | Sharpe |
+|---|---|---|---|
+| flat volatility surface | +9.53% | 11.2% | **0.87** |
+| +2 vol points of skew | +7.32% | 11.3% | 0.69 |
+| +4 vol points (the real SPX shape) | +5.01% | 11.3% | **0.49** |
+
+A **0.45 Sharpe swing on one unobservable assumption** is not a backtest, it is
+the assumption being read back. Pricing OTM options honestly needs real option
+data, and even the flattering end does not approach 2.
 
 ### Negative results — don't re-derive these
 
