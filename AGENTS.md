@@ -6,5 +6,7 @@ governing portfolio mandate. Do not optimize for return or Sharpe at the
 expense of its drawdown-first objective or its 5.4% annual, equal-monthly
 withdrawal constraint.
 
-Treat the current project as research-only unless Jason explicitly authorizes
-a specific live-trading configuration after its required validation gates.
+Jason has authorized non-secret live-trading readiness work, but has not
+provided account access or order-submission authority. Do not connect to an
+account, retrieve account data, or submit an order until Jason separately
+provisions that access and the policy's validation gates are satisfied.

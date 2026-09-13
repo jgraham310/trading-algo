@@ -78,6 +78,11 @@ changes the mandate.
 
 ## Current implementation boundary
 
-This repository currently contains research and backtesting code. It does not
-yet authorize or implement broker connectivity or live order submission. Future
-execution work must preserve this policy as the governing acceptance criteria.
+Jason authorized preparation for future live trading on 2026-09-13. Account
+credentials, account access, and authority to submit orders have **not** been
+provided. The repository may therefore build and test non-secret execution
+readiness, but it must not connect to an account, retrieve account data, or
+submit an order until Jason separately provisions the necessary account access.
+
+This policy remains the governing acceptance criteria for all future execution
+work.
