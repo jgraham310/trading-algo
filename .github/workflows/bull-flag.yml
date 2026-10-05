@@ -1,0 +1,108 @@
+# Weekly bull-flag breakout screen, Fridays 3:00 PM America/New_York.
+#
+# Cron is UTC and doesn't know DST, so it fires at 2:45 PM in BOTH EDT
+# (18:45 UTC) and EST (19:45 UTC) slots; the gate below keeps the first one
+# that is 2:30-4:00 PM in New York and sleeps it to 3:00. The 15 minutes of slack are
+# deliberate: GitHub delays scheduled runs, worst at the top of the hour.
+#
+# Alerts: a GitHub issue that @mentions the repo owner (email + GitHub mobile
+# push, no setup). Optional: set repo secret NTFY_TOPIC for an ntfy.sh push.
+
+name: bull-flag-screen
+
+on:
+  schedule:
+    - cron: "45 18,19 * * 5"
+  workflow_dispatch:        # manual run, no time gate
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: bull-flag
+  cancel-in-progress: false
+
+jobs:
+  screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Gate on New York time
+        id: gate
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          now=$(TZ=America/New_York date +%H%M)
+          echo "New York time: $now"
+          if [ "$now" -lt 1430 ] || [ "$now" -ge 1600 ]; then
+            echo "Not the 3 PM ET slot (other DST offset) -- skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # In EDT the second slot lands at 3:45 PM, inside the window; a late
+          # first slot can too. Whichever runs second sees today's issue and stops.
+          today=$(TZ=America/New_York date +%F)
+          if gh issue list --repo "$GITHUB_REPOSITORY" --label bull-flag --state all \
+               --search "\"Bull-flag breakouts $today\" in:title" --json number -q '.[].number' | grep -q .; then
+            echo "Already alerted for $today -- skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          target=$(TZ=America/New_York date -d "15:00" +%s)
+          wait=$(( target - $(date +%s) ))
+          if [ "$wait" -gt 0 ]; then echo "Sleeping ${wait}s until 15:00 ET"; sleep "$wait"; fi
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.skip != 'true'
+
+      - uses: actions/setup-python@v5
+        if: steps.gate.outputs.skip != 'true'
+        with:
+          python-version: "3.12"
+
+      # Not `pip install -e .`: that pulls TimesFM + torch, which the screen doesn't use.
+      - name: Install
+        if: steps.gate.outputs.skip != 'true'
+        run: pip install -q "yfinance>=0.2.50" "pandas>=2.0" "numpy>=1.26.4"
+
+      - name: Screen
+        id: screen
+        if: steps.gate.outputs.skip != 'true'
+        run: python -m trading_algo.flag --out report.md --csv hits.csv
+
+      - name: Alert
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          HITS: ${{ steps.screen.outputs.hits }}
+        run: |
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+          printf '\ncc @%s · [run](%s/%s/actions/runs/%s)\n' "${{ github.repository_owner }}" \
+            "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" >> report.md
+          gh label create bull-flag --color 0E8A16 --force >/dev/null
+          gh issue list --label bull-flag --state open --json number -q '.[].number' \
+            | xargs -r -n1 gh issue close
+          gh issue create --label bull-flag --body-file report.md \
+            --title "Bull-flag breakouts $(TZ=America/New_York date +%F): ${HITS} hit(s)"
+          if [ -n "$NTFY_TOPIC" ]; then
+            tickers=$(tail -n +2 hits.csv | cut -d, -f1 | paste -sd' ' -)
+            curl -fsS -H "Title: Bull-flag breakouts: ${HITS}" -H "Tags: chart_with_upwards_trend" \
+              -d "${tickers:-none this week}" "https://ntfy.sh/${NTFY_TOPIC}"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: steps.gate.outputs.skip != 'true' && always()
+        with:
+          name: bull-flag-hits
+          path: hits.csv
+          if-no-files-found: ignore
+
+      # Silence must mean "no breakouts", never "the job broke".
+      - name: Alert on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "Bull-flag screen FAILED $(TZ=America/New_York date +%F)" \
+            --body "cc @${{ github.repository_owner }} -- see $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"

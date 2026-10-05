@@ -103,6 +103,62 @@ python -m trading_algo.xsec       # cross-sectional: does the stage RANK names?
 python -c "from trading_algo.sweep import vol_terciles, vol_report; print(vol_report(vol_terciles()))"
 ```
 
+## Weekly bull-flag breakout screen
+
+```bash
+python -m trading_algo.flag                      # bundled S&P 1500 universe, as of now
+python -m trading_algo.flag NVDA AMD --min-vol 1.5
+python -m trading_algo.flag --asof 2026-09-25    # what it would have said that Friday
+python -m trading_algo.flag --refresh-universe   # re-pull S&P 500/400/600 from Wikipedia
+```
+
+A hit at week t, using only bars through t:
+
+* **pole** — swing low to the setup's highest high, **≥ 20% in 1–6 weeks**.
+* **flag** — the 2–6 weeks after the top, never longer than the pole. No new
+  high, gives back **≤ 50%** of the pole, closes drift sideways-to-down.
+* **breakout** — week t **closes above every flag high**. `above_pole_high`
+  says whether it also cleared the pole top.
+* **volume** — week t **≥ 1.0x the prior 10-week average** (~50-day).
+
+`stop` is the flag low. Liquidity floor: $5 price, $5M average weekly dollar volume.
+
+**Schedule.** `.github/workflows/bull-flag.yml` runs every Friday at
+**3:00 PM New York time** (DST handled) and takes ~3 minutes for ~1,500 names.
+It opens a GitHub issue labelled `bull-flag` that @mentions the repo owner,
+which reaches you by email and GitHub mobile push, and closes the previous week's
+issue. A run that fails opens a `FAILED` issue, so silence never means "broken".
+For a phone push, set repo secret `NTFY_TOPIC` and subscribe to that topic in
+the ntfy app. Run on demand from the Actions tab (`workflow_dispatch`).
+
+Caveats:
+
+* At 3 PM the week is **partial**. The volume test is conservative, since the
+  missing last hour only adds volume. The breakout can still fail by the close.
+* Yahoo data, unofficial API. If < 80% of tickers download the run aborts
+  (FAILED issue) instead of reporting "no breakouts".
+* GitHub **disables scheduled workflows in public repos after 60 days without
+  a commit**. It emails a warning first; re-enable from the Actions tab.
+* GitHub can delay scheduled runs. Cron fires at 2:45 and sleeps to 3:00 to
+  absorb that.
+
+### Does it pay? No evidence it does
+
+Back-scanned every week, Jul 2021 – Sep 2026, current S&P 1500 constituents:
+723 hits, median **1 hit/week**, none in 37% of weeks. Forward returns from the breakout
+week's close, minus the same-week equal-weight universe:
+
+| horizon | hits | excess (mean) | excess (median) | beat universe | t (week-clustered) |
+|---|---|---|---|---|---|
+| 1w  | 723 | +0.01% | −0.22% | 47% | −0.26 |
+| 4w  | 714 | −0.72% | −1.00% | 45% | −1.71 |
+| 13w | 677 | −0.75% | −2.55% | 42% | −0.80 |
+
+Current constituents
+mean survivorship bias, which flatters hits and baseline alike. Treat the
+screen as a **watchlist generator**, not a signal. If you want it to be one,
+test it against the same-exposure control first, the way `sweep.py` does.
+
 ## Connecting other data sources
 
 TimesFM 3.0 takes covariates natively. Anything you connect has to become a
@@ -132,7 +188,7 @@ rebalance dates, scheduled announcements. If you can't say why you know a value
 in advance, it belongs in `past`.
 
 Checks: `python test_signal.py && python test_backtest.py && python
-test_sources.py` (model stubbed, no download). The alignment and leakage tests
+test_sources.py && python test_flag.py` (model stubbed, no download). The alignment and leakage tests
 are the ones worth keeping.
 
 > **License:** TimesFM 3.0 *weights* are `timesfm-non-commercial-license-v1.0` —
