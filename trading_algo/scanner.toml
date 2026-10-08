@@ -1,0 +1,94 @@
+# Scanner config. Every threshold lives here; comment = playbook section.
+# Tickers are a human call (playbook §11): fill the sleeves yourself.
+
+[data]
+provider      = "csv"          # "csv" (offline fixtures) | "ibkr" (paper gateway only)
+cache_dir     = "data/bars"
+fixtures_dir  = "tests_fixtures"
+watchlist     = ""             # optional path to a watchlist.json; empty = none
+decision_tf   = "weekly"       # §0 weekly close decides; daily is alerts only
+reference     = ["SPY", "QQQ", "IWM", "RSP", "^VIX", "HYG", "EWY"]   # §2
+
+[ibkr]                         # paper only; live path raises NotImplementedError
+host = "127.0.0.1"
+port = 4002                    # 4002 Gateway paper | 7497 TWS paper
+
+# §1 sleeves: ticker = "theme". Empty until you fill them.
+[universe.quality]
+[universe.speculative]
+[universe.etf]
+
+[stage]                        # §3
+ma_weeks         = 30
+slope_lookback   = 3
+speedline_weeks  = 8
+rs_mode          = "mansfield" # "mansfield" (true) | "approx" (ShortSeller's)
+rs_window        = 52
+hysteresis_weeks = 2           # [FIX] closes required to change stage
+
+[regime]                       # §2
+ma_periods      = [5, 9, 20, 50, 100, 200]
+vix_sma         = 20
+nyse_new_lows   = 500
+red_below       = 40           # score < this -> RED
+green_above     = 65           # score >= this -> GREEN
+block_opex_week = false        # monthly/quarterly options expiration
+[regime.weights]
+ma_stack = 25
+downtrend_line = 15
+vix = 15
+credit = 10
+safe_checklist = 25
+breadth = 10                   # dropped and renormalised if data is "unknown"
+
+[bands]                        # §7
+sma = 20
+sigmas = [1, 2, 3]
+exhaustion_sigma = 2.5
+rsi_period = 14
+rsi_exhaust = 70
+rsi_strong_buy = 25
+squeeze_lookback_weeks = 26    # §7 band width at a 6-month low
+lockout_bars = 5
+
+[volume]                       # §8
+climax_mult = 2.0
+avg_period  = 20
+
+[pivots]                       # §6
+lookback = 3                   # confirmed only after this many bars close
+n_points = 3
+
+[zones]                        # §4
+dd_min = 20.0                  # % off ATH
+dd_max = 40.0
+tranches = 3
+
+[exits]                        # §5
+gatekeeper_sma_days = 50
+gatekeeper_ema_weeks = 10
+
+[candles]                      # §9
+wick_mult = 2.0
+opp_wick_max = 1.0
+doji_body = 0.10
+marubozu_body = 0.95
+tweezer_tol = 0.05
+
+[costs]                        # backtest
+commission_bps = 1.0
+slippage_bps = 5.0
+fill = "next_open"
+
+[risk]                         # policy: long only, no leverage/margin/options
+long_only = true
+max_position_pct = 10.0
+max_tranche_pct = 4.0
+max_orders_per_day = 5
+max_daily_notional = 25000
+
+[execution]
+mode = "paper"
+live_enabled = false
+order_type = "limit"
+approval_required = true

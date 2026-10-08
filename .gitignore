@@ -4,4 +4,4 @@ __pycache__/
 wf_*.csv
 sweep_basket.csv
 *.bak
-data/
+/data/
