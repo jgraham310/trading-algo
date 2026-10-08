@@ -11,7 +11,10 @@ reference     = ["SPY", "QQQ", "IWM", "RSP", "^VIX", "HYG", "EWY"]   # §2
 
 [ibkr]                         # paper only; live path raises NotImplementedError
 host = "127.0.0.1"
-port = 4002                    # 4002 Gateway paper | 7497 TWS paper
+port = 4002                    # 4002 Gateway paper | 7497 TWS paper (only these are accepted)
+min_interval_s = 11            # pacing: IBKR allows ~60 historical requests / 10 min
+max_retries = 3
+client_id = 17
 
 # §1 sleeves: ticker = "theme". Empty until you fill them.
 [universe.quality]
