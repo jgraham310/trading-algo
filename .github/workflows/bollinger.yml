@@ -1,0 +1,113 @@
+# Weekly Bollinger Band (20, 2) screen, Fridays after the close (~5:30 PM America/New_York).
+#
+# Cron is UTC and doesn't know DST: 21:30 UTC is 5:30 PM EDT / 4:30 PM EST, 22:30 UTC is
+# 6:30 PM EDT / 5:30 PM EST. The gate keeps runs that land 5:00-8:00 PM in New York (data has
+# settled, GitHub's scheduling delay is absorbed) and the issue-title check stops the second.
+# Holiday Fridays (Good Friday) still run; the last bar of the week is Thursday's.
+#
+# Alerts: a GitHub issue that @mentions the repo owner. Optional: repo secret NTFY_TOPIC.
+
+name: bollinger-screen
+
+on:
+  schedule:
+    - cron: "30 21,22 * * 5"
+  workflow_dispatch:        # manual run, no time gate
+
+permissions:
+  contents: write      # commits research_data/bollinger_history.csv
+  issues: write
+
+concurrency:
+  group: bollinger
+  cancel-in-progress: false
+
+jobs:
+  screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Gate on New York time
+        id: gate
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          now=$(TZ=America/New_York date +%H%M)
+          echo "New York time: $now"
+          if [ "$now" -lt 1700 ] || [ "$now" -ge 2000 ]; then
+            echo "Not the after-close slot (other DST offset) -- skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          today=$(TZ=America/New_York date +%F)
+          if gh issue list --repo "$GITHUB_REPOSITORY" --label bollinger --state all \
+               --search "\"Weekly Bollinger $today\" in:title" --json number -q '.[].number' | grep -q .; then
+            echo "Already alerted for $today -- skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.skip != 'true'
+
+      - uses: actions/setup-python@v5
+        if: steps.gate.outputs.skip != 'true'
+        with:
+          python-version: "3.12"
+
+      # Not `pip install -e .`: that pulls TimesFM + torch, which the screen doesn't use.
+      - name: Install
+        if: steps.gate.outputs.skip != 'true'
+        run: pip install -q "yfinance>=0.2.50" "pandas>=2.0" "numpy>=1.26.4"
+
+      - name: Screen
+        id: screen
+        if: steps.gate.outputs.skip != 'true'
+        run: python -m trading_algo.bband --out report.md --csv hits.csv --history research_data/bollinger_history.csv
+
+      - name: Alert
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          ABOVE: ${{ steps.screen.outputs.above }}
+          BELOW: ${{ steps.screen.outputs.below }}
+        run: |
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+          printf '\ncc @%s · [run](%s/%s/actions/runs/%s)\n' "${{ github.repository_owner }}" \
+            "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" >> report.md
+          gh label create bollinger --color 1D76DB --force >/dev/null
+          gh issue list --label bollinger --state open --json number -q '.[].number' \
+            | xargs -r -n1 gh issue close
+          gh issue create --label bollinger --body-file report.md \
+            --title "Weekly Bollinger $(TZ=America/New_York date +%F): ${ABOVE} above, ${BELOW} below"
+          if [ -n "$NTFY_TOPIC" ]; then
+            curl -fsS -H "Title: Weekly Bollinger" -d "${ABOVE} above upper, ${BELOW} below lower" \
+              "https://ntfy.sh/${NTFY_TOPIC}"
+          fi
+
+      # The running dataset for later pattern analysis: one row per (week, ticker) outside the bands,
+      # with forward returns back-filled as they become known. Fails loudly (alert step below) if the
+      # push is rejected, e.g. by branch protection.
+      - name: Commit history
+        if: steps.gate.outputs.skip != 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add research_data/bollinger_history.csv
+          git diff --cached --quiet || { git commit -m "Bollinger history $(TZ=America/New_York date +%F)"; git push; }
+
+      - uses: actions/upload-artifact@v4
+        if: steps.gate.outputs.skip != 'true' && always()
+        with:
+          name: bollinger-hits
+          path: hits.csv
+          if-no-files-found: ignore
+
+      # Silence must mean "nothing outside the bands", never "the job broke".
+      - name: Alert on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "Bollinger screen FAILED $(TZ=America/New_York date +%F)" \
+            --body "cc @${{ github.repository_owner }} -- see $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
