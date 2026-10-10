@@ -23,6 +23,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
+from trading_algo import events
 from trading_algo.flag import download, weekly
 
 SYMDIR = "https://www.nasdaqtrader.com/dynamic/SymDir/"
@@ -140,7 +141,7 @@ FWD = [f"fwd_{n}w" for n in HORIZONS] + [f"spy_fwd_{n}w" for n in HORIZONS]
 
 
 def update_history(path: str | Path, hits: pd.DataFrame, weeks: list[str], data: dict[str, pd.DataFrame],
-                   spy: pd.DataFrame | None) -> pd.DataFrame:
+                   spy: pd.DataFrame | None, tag_events: bool = False) -> pd.DataFrame:
     """Upsert `hits` for `weeks` into the CSV at `path`, then fill any forward returns now knowable.
 
     Forward return = weekly close n weeks later / close at the signal week, both from the SAME freshly
@@ -174,6 +175,8 @@ def update_history(path: str | Path, hits: pd.DataFrame, weeks: list[str], data:
                 col = f"{prefix}fwd_{n}w"
                 if pd.isna(h.at[i, col]) and pos + n < len(s):
                     h.at[i, col] = round(s.iloc[pos + n] / s.iloc[pos] - 1, 4)
+    if tag_events:
+        h = events.tag(h, data, spy)   # price tags need daily bars, so rows older than the download stay NaN
     h = h.sort_values(["week", "side", "ticker"], ignore_index=True)
     path.parent.mkdir(parents=True, exist_ok=True)
     h.to_csv(path, index=False)
@@ -229,7 +232,7 @@ def main(argv: list[str] | None = None) -> int:
             past = [scan(data, asof=f) for f in fridays]
         allhits = pd.concat([*past, hits], ignore_index=True)
         weeks = [f.date().isoformat() for f in fridays] + [friday] if a.backfill else [friday]
-        h = update_history(a.history, allhits, weeks, data, spy)
+        h = update_history(a.history, allhits, weeks, data, spy, tag_events=True)
         print(f"history: {len(h)} rows across {h.week.nunique()} weeks -> {a.history}")
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a") as f:

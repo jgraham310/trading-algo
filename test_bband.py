@@ -76,3 +76,44 @@ def test_week_complete_guard():
     assert not week_complete(fri, datetime(2026, 10, 7, 20, 0, tzinfo=ny))    # Wednesday night
     assert week_complete(fri, datetime(2026, 10, 9, 17, 30, tzinfo=ny))       # Friday after close
     assert week_complete(fri, datetime(2026, 10, 10, 9, 0, tzinfo=ny))        # Saturday
+
+
+def test_event_price_tags_separate_gap_from_grind():
+    from trading_algo.events import price_tags
+
+    idx = pd.bdate_range("2024-01-01", periods=60)             # ends Fri 2024-03-22
+    friday = idx[-1]
+
+    def daily(closes, gap_day=None, vol=None):
+        c = np.array(closes, float)
+        o = np.r_[c[0], c[:-1]]
+        if gap_day is not None:
+            o[gap_day] = c[gap_day - 1] * 1.15                 # 15% overnight gap
+        v = np.full(len(c), 1e6) if vol is None else vol
+        return pd.DataFrame({"Open": o, "High": np.maximum(o, c) * 1.005, "Low": np.minimum(o, c) * 0.995,
+                             "Close": c, "Volume": v}, index=idx)
+
+    base = np.full(55, 100.0)
+    grind = daily(np.r_[base, 101, 102, 103, 104, 105])
+    gap = daily(np.r_[base, 100, 100, 100, 100, 115], gap_day=59, vol=np.r_[np.full(59, 1e6), 5e6])
+    spy = daily(np.tile([100.0, 101.0], 30))
+    g, e = price_tags(grind, spy, friday), price_tags(gap, spy, friday)
+    assert e["gap_atr"] > 5 * g["gap_atr"] and e["day_conc"] > 0.9 > g["day_conc"] and e["vol_spike"] == 5.0
+    assert g["resid_1w"] == 0.05                               # stock never co-moved with SPY (beta 0) -> all +5% is idiosyncratic
+
+
+def test_filing_tags_window_and_unknown():
+    from trading_algo.events import tag
+
+    class Fake:
+        def filings(self, tk):
+            if tk == "NOCIK":
+                return None
+            return pd.DataFrame({"date": pd.to_datetime(["2024-03-12", "2024-03-01"]),
+                                 "form": ["8-K", "8-K"], "items": ["2.02,9.01", "1.01"]})
+
+    h = pd.DataFrame({"week": ["2024-03-15", "2024-03-15"], "ticker": ["A", "NOCIK"]})
+    out = tag(h, {}, None, edgar=Fake())
+    a, n = out.iloc[0], out.iloc[1]
+    assert a.filing_event == 1 and a.earnings_event == 1 and a.filing_items == "2.02;9.01"  # 03-01 is outside 14d
+    assert pd.isna(n.filing_event)                                                          # unknown, not 0
