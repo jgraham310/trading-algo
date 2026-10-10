@@ -138,6 +138,29 @@ def render(hits: pd.DataFrame, n_scanned: int, friday: str, top: int = 100) -> s
 
 HORIZONS = (1, 2, 4, 8)   # weeks ahead
 FWD = [f"fwd_{n}w" for n in HORIZONS] + [f"spy_fwd_{n}w" for n in HORIZONS]
+# Swing horizon, TRADING days after the signal Friday's close (the screen runs after the close, so the
+# realistic entry is the next session's open):
+#   fwd_nd  = close n sessions later / signal close      ofwd_nd = same close / next session's open
+#   mae_3d  = worst low over the first 3 sessions / next session's open (the drawdown you would have sat through)
+DAYS = (1, 2, 3)
+DFWD = [f"{p}{n}d" for p in ("fwd_", "ofwd_", "spy_fwd_", "spy_ofwd_") for n in DAYS] + ["mae_3d"]
+
+
+def _daily_fwd(d: pd.DataFrame, friday: pd.Timestamp) -> dict:
+    """Swing-horizon returns for one ticker/SPY daily frame; missing sessions stay absent."""
+    sig = d.loc[:friday]
+    aft = d.loc[d.index > friday]
+    if not len(sig) or not len(aft):
+        return {}
+    c0, o1 = sig["Close"].iloc[-1], aft["Open"].iloc[0]
+    out = {}
+    for n in DAYS:
+        if len(aft) >= n:
+            out[f"fwd_{n}d"] = round(aft["Close"].iloc[n - 1] / c0 - 1, 4)
+            out[f"ofwd_{n}d"] = round(aft["Close"].iloc[n - 1] / o1 - 1, 4)
+    if len(aft) >= 3:
+        out["mae_3d"] = round(aft["Low"].iloc[:3].min() / o1 - 1, 4)
+    return out
 
 
 def update_history(path: str | Path, hits: pd.DataFrame, weeks: list[str], data: dict[str, pd.DataFrame],
@@ -175,6 +198,23 @@ def update_history(path: str | Path, hits: pd.DataFrame, weeks: list[str], data:
                 col = f"{prefix}fwd_{n}w"
                 if pd.isna(h.at[i, col]) and pos + n < len(s):
                     h.at[i, col] = round(s.iloc[pos + n] / s.iloc[pos] - 1, 4)
+    for c in DFWD:
+        if c not in h:
+            h[c] = float("nan")
+    spy_cache = {}
+    for i in h.index[h[DFWD].isna().any(axis=1)]:
+        t0 = pd.Timestamp(h.at[i, "week"])
+        d = data.get(h.at[i, "ticker"])
+        if d is not None and len(d):
+            for k, v in _daily_fwd(d, t0).items():
+                if pd.isna(h.at[i, k]):
+                    h.at[i, k] = v
+        if spy is not None:
+            sp = spy_cache.setdefault(t0, _daily_fwd(spy, t0))
+            for n in DAYS:
+                for src, dst in ((f"fwd_{n}d", f"spy_fwd_{n}d"), (f"ofwd_{n}d", f"spy_ofwd_{n}d")):
+                    if src in sp and pd.isna(h.at[i, dst]):
+                        h.at[i, dst] = sp[src]
     if tag_events:
         h = events.tag(h, data, spy)   # price tags need daily bars, so rows older than the download stay NaN
     h = h.sort_values(["week", "side", "ticker"], ignore_index=True)

@@ -117,3 +117,15 @@ def test_filing_tags_window_and_unknown():
     a, n = out.iloc[0], out.iloc[1]
     assert a.filing_event == 1 and a.earnings_event == 1 and a.filing_items == "2.02;9.01"  # 03-01 is outside 14d
     assert pd.isna(n.filing_event)                                                          # unknown, not 0
+
+
+def test_daily_forward_returns_and_mae():
+    from trading_algo.bband import _daily_fwd
+
+    idx = pd.bdate_range("2024-03-18", periods=7)              # Mon..Fri, then Mon, Tue
+    d = pd.DataFrame({"Open": [10, 10, 10, 10, 10, 11.0, 11.0], "High": 12.0, "Close": [10, 10, 10, 10, 10, 12.0, 13.0],
+                      "Low": [10, 10, 10, 10, 10, 10.5, 9.9], "Volume": 1}, index=idx)
+    r = _daily_fwd(d, idx[4])                                  # signal Friday close 10; Mon open 11, close 12
+    assert r["fwd_1d"] == 0.2 and r["fwd_2d"] == 0.3           # close-to-close from Friday's 10
+    assert r["ofwd_1d"] == round(12 / 11 - 1, 4) and r["ofwd_2d"] == round(13 / 11 - 1, 4)
+    assert "fwd_3d" not in r and "mae_3d" not in r             # only 2 sessions exist yet -> not knowable
