@@ -1,7 +1,7 @@
 # Investment Policy and Operating Mandate
 
 **Owner:** Jason Graham
-**Last confirmed:** 2026-09-13 (options scope and withdrawal definition amended 2026-09-13)
+**Last confirmed:** 2026-10-10 (options scope amended 2026-09-13 and 2026-10-10; withdrawal definition amended 2026-09-13)
 **Status:** governing requirement for all research, backtests, signal design, and future execution work in this repository.
 
 ## Objective
@@ -75,6 +75,33 @@ portfolio.
    puts in live execution requires a further amendment here. Selling puts,
    spreads, and any short option position other than a covered call remain
    prohibited. See `trading_algo/options.py` and the README.
+
+   *Single-name long puts — amended 2026-10-10 by Jason's explicit decision.*
+   Jason authorised **buying put options on single stocks that close above the
+   upper weekly Bollinger Band (20, 2)** (`trading_algo/bband.py`), as a
+   defined-risk directional vehicle for a swing horizon of **at most three
+   trading days**. This is a different use from the index protective puts
+   evaluated above, so that evidence neither supports nor rules it out. Scope
+   and limits:
+
+   - Long puts only, premium paid in full in cash: no margin, and the maximum
+     loss on a position is its premium. Selling puts, spreads (including debit
+     put spreads), and any short option position other than a covered call
+     remain prohibited.
+   - Authorised for research, backtest, and paper evaluation only. It is **not**
+     part of the live strategy until it clears item 7 (leakage tests,
+     out-of-sample evaluation, paper trading, and explicit owner approval of the
+     live configuration).
+   - Evaluation must price the put honestly: real option bid/ask, time decay
+     over the holding period, and implied-volatility changes (including the
+     post-event IV drop). Underlying-stock returns alone are not evidence that
+     the put is profitable. Report maximum adverse excursion and the premium
+     lost in the losing cases.
+   - Per-position premium cap, aggregate premium budget, and strike/expiry
+     rules are to be set by Jason in versioned configuration before any paper or
+     live use; this amendment does not set them.
+   - The premium budget must be modeled in the withdrawal-adjusted evaluation
+     and must not impair the cash held for scheduled withdrawals (item 4).
 6. **Costs and taxes:** backtests must include realistic commissions, spread,
    slippage, and, where applicable, tax assumptions. Assumptions must be named
    alongside results.
