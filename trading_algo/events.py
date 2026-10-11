@@ -13,6 +13,12 @@ Filing tags (SEC EDGAR, free, no key; 14 days ending that Friday):
   filing_event   1 if the issuer filed an 8-K (or 6-K) -- NaN if the ticker has no CIK / fetch failed
   earnings_event 1 if an 8-K carried Item 2.02 (results). Foreign issuers (6-K) aren't detected.
   filing_items   the 8-K item numbers, ';'-joined
+Volatility context (a Bollinger band's width is the std of price LEVELS, which a steady trend inflates):
+  atr_pct      20-day average true range / prior close (fraction): a return-based daily-move size
+  ret_vol_w    std of the last 20 weekly returns (fraction)
+  bw_pctile    share of the prior <=26 weeks' band widths below this week's width (0 = a squeeze, 1 = widest);
+               NaN with <8 prior weeks
+  ext_atr      how far the close is beyond the breached band, in ATRs (close x atr_pct)
 """
 
 from __future__ import annotations
@@ -27,7 +33,8 @@ import pandas as pd
 
 PRICE_COLS = ["gap_atr", "day_conc", "vol_spike", "resid_1w"]
 FILING_COLS = ["filing_event", "earnings_event", "filing_items"]
-EVENT_COLS = PRICE_COLS + FILING_COLS
+VOL_COLS = ["atr_pct", "ret_vol_w", "bw_pctile", "ext_atr"]
+EVENT_COLS = PRICE_COLS + FILING_COLS + VOL_COLS
 FORMS = {"8-K", "8-K/A", "6-K"}
 # SEC rejects (403) a User-Agent with no contact email. Set SEC_USER_AGENT="trading-algo-research you@example.com";
 # keep the address out of the (public) repo -- it comes from the environment / a GitHub secret.
@@ -59,6 +66,29 @@ def price_tags(d: pd.DataFrame, spy: pd.DataFrame, friday: pd.Timestamp) -> dict
             beta = np.cov(r[ok], sr[ok])[0, 1] / sr[ok].var()
             out["resid_1w"] = round(float(chain.iloc[-1] / chain.iloc[0] - 1
                                           - beta * (s_wk.iloc[-1] / s_prior.iloc[-1] - 1)), 3)
+    return out
+
+
+def vol_tags(d: pd.DataFrame, friday: pd.Timestamp, close: float, upper: float, lower: float,
+             side: str, window: int = 20) -> dict | None:
+    """Return-based volatility context for the signal week from daily OHLCV up to `friday`."""
+    d = d.loc[:friday]
+    if len(d) < window + 1:
+        return None
+    prev = d["Close"].shift(1)
+    tr = pd.concat([d["High"] - d["Low"], (d["High"] - prev).abs(), (d["Low"] - prev).abs()], axis=1).max(axis=1)
+    atr = (tr / prev).iloc[-window:].mean()
+    w = d["Close"].resample("W-FRI").last().dropna()
+    out = {"atr_pct": round(float(atr), 4), "ret_vol_w": np.nan, "bw_pctile": np.nan, "ext_atr": np.nan}
+    if len(w) >= window + 1:
+        out["ret_vol_w"] = round(float(w.pct_change().iloc[-window:].std()), 4)
+    bw = 4 * w.rolling(window).std(ddof=0) / w.rolling(window).mean()   # == (upper-lower)/mid for k=2
+    if len(bw.dropna()) >= 9 and pd.notna(bw.iloc[-1]):
+        prior = bw.iloc[:-1].dropna().iloc[-26:]
+        out["bw_pctile"] = round(float((prior < bw.iloc[-1]).mean()), 3)
+    if atr > 0:
+        beyond = close - upper if side == "above" else lower - close
+        out["ext_atr"] = round(float(beyond / (close * atr)), 2)
     return out
 
 
@@ -111,6 +141,15 @@ def tag(h: pd.DataFrame, data: dict[str, pd.DataFrame], spy: pd.DataFrame | None
             if t:
                 for k, v in t.items():
                     h.at[i, k] = v
+    for i in h.index[h["atr_pct"].isna()]:
+        d = data.get(h.at[i, "ticker"])
+        if d is None or not len(d):
+            continue
+        r = h.loc[i]
+        t = vol_tags(d, pd.Timestamp(r["week"]), r["close"], r["upper"], r["lower"], r["side"])
+        if t:
+            for k, v in t.items():
+                h.at[i, k] = v
     for i in h.index[h["filing_event"].isna()]:
         f = edgar.filings(h.at[i, "ticker"])
         if f is None:

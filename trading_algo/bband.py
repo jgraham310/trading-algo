@@ -235,6 +235,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", help="write the markdown report here")
     ap.add_argument("--csv", help="write hits as CSV here")
     ap.add_argument("--history", help="upsert hits into this running CSV (use after the close) and fill forward returns")
+    ap.add_argument("--period", default="1y", help="yfinance history to download (2y gives the width percentile "
+                    "more past for old rows)")
     ap.add_argument("--backfill", type=int, metavar="N",
                     help="with --history: also seed the last N past weeks (max ~30) from the same download")
     a = ap.parse_args(argv)
@@ -243,7 +245,7 @@ def main(argv: list[str] | None = None) -> int:
     if a.history and asof is not None and asof.weekday() != 4:
         raise SystemExit("--history with --asof needs a Friday (a mid-week asof would store a partial week)")
     tickers = [t.upper() for t in a.tickers] or universe()
-    data = download(tickers + ["SPY"], period="1y")
+    data = download(tickers + ["SPY"], period=a.period)
     spy = data.pop("SPY", None)
     if len(data) < 0.8 * len(tickers):
         # Don't send "nothing outside the bands" when the truth is "no data".

@@ -129,3 +129,16 @@ def test_daily_forward_returns_and_mae():
     assert r["fwd_1d"] == 0.2 and r["fwd_2d"] == 0.3           # close-to-close from Friday's 10
     assert r["ofwd_1d"] == round(12 / 11 - 1, 4) and r["ofwd_2d"] == round(13 / 11 - 1, 4)
     assert "fwd_3d" not in r and "mae_3d" not in r             # only 2 sessions exist yet -> not knowable
+
+
+def test_volatility_context_tags():
+    from trading_algo.events import vol_tags
+
+    idx = pd.bdate_range("2023-10-02", periods=300)
+    c = np.full(300, 100.0)
+    d = pd.DataFrame({"Open": c, "High": c * 1.01, "Low": c * 0.99, "Close": c, "Volume": 1}, index=idx)
+    t = vol_tags(d, idx[-1] if idx[-1].weekday() == 4 else idx[idx.weekday == 4][-1], close=110.0, upper=104.0,
+                 lower=96.0, side="above")
+    assert t["atr_pct"] == 0.02 and t["ret_vol_w"] == 0.0
+    assert t["ext_atr"] == round((110 - 104) / (110 * 0.02), 2)         # 2.73 ATRs beyond the upper band
+    assert vol_tags(d.iloc[:10], idx[9], 110.0, 104.0, 96.0, "above") is None   # too little history
