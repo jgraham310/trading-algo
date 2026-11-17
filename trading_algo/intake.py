@@ -16,8 +16,8 @@ no point-in-time photonics index to correct against the way RSP corrects the
 S&P 500 in `stocks.py`.
 
 What IS testable: whether the weekly-level rule beats holding the SAME basket.
-Both sides inherit the identical survivorship gift, so it cancels, and the
-comparison is honest even though neither leg's absolute return is.
+Both sides use the same surviving basket, but survivorship need not cancel:
+this is conditional exploratory evidence, not unbiased historical timing alpha.
 
     python -m trading_algo.intake
     python -m trading_algo.intake --demo
@@ -56,14 +56,16 @@ def weekly_levels(px: pd.DataFrame, lookback: int = 20) -> pd.DataFrame:
     state[wk > hi] = 1.0
     state[wk < lo] = 0.0
     state = state.ffill()
-    # a weekly state is known at that Friday's close, so it may only be traded
-    # from the following bar onward
-    return state.shift(1).reindex(px.index, method="ffill")
+    # Decision weights become available at the Friday label; _score lags daily.
+    # Conservatively wait through Friday holidays (no exchange calendar here).
+    return state.reindex(px.index, method="ffill")
 
 
 def _score(w: pd.DataFrame, ex: pd.DataFrame, cost_bps: float, name: str) -> dict:
     W = w.reindex(ex.index).fillna(0.0)
-    turn = W.diff().abs().sum(axis=1).shift(1).fillna(0)
+    changes = W.diff()
+    changes.iloc[0] = W.iloc[0]
+    turn = changes.abs().sum(axis=1).shift(1).fillna(0)
     net = ((W.shift(1) * ex).sum(axis=1) - turn * cost_bps / 1e4).iloc[1:]
     f = rf(net.index)
     sim = simulate((net + f).dropna(), weight=W.sum(axis=1))
@@ -103,7 +105,7 @@ def main():
           f"data, {len(MISSING)} with none ({', '.join(MISSING)}).")
     print(f"Traded in 2000: {int(yr2000.sum())} of {len(PHOTONICS)}. The 2000-02 optical bust is "
           f"in this list\nby its survivors only, so the BASKET's return is not testable -- only "
-          f"the RULE is,\nagainst the same basket, where the survivorship gift cancels.\n")
+          f"the RULE is,\nagainst the same surviving basket, with selection bias still present.\n")
 
     rows = evaluate()
     print(report({r.pop("name"): r for r in [dict(x) for x in rows]}))
@@ -176,13 +178,7 @@ def demo():
     b = weekly_levels(up.iloc[:cut], 4).iloc[:cut - 10].dropna()
     assert a.equals(b), "weekly levels read the future"
 
-    # the state used on a bar must come from a STRICTLY earlier weekly close
-    wk = up.resample("W-FRI").last()
-    st2 = weekly_levels(up, 4)
-    for t in st2.index[::60]:
-        prior = wk.index[wk.index < t]
-        assert len(prior) == 0 or st2.loc[t].isna().all() or True  # shape check only
-    assert st2.index.equals(up.index)
+    assert weekly_levels(up, 4).index.equals(up.index)
     print("intake ok")
 
 

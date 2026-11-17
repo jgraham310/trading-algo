@@ -639,3 +639,9 @@ are the ones worth keeping.
 > non-commercial, non-production only. For live trading set
 > `TIMESFM_CHECKPOINT` to an Apache-2.0 2.x checkpoint or get a commercial
 > license from Google. The code itself is Apache-2.0.
+
+## AFPR exploratory research
+
+[Point-in-time capture and long-stock event study](docs/afpr-research.md) is a
+separate research-only lane. It preserves failed and pending observations, uses
+next-open fills, and does not amend the portfolio mandate or enable trading.
