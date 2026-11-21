@@ -4,6 +4,8 @@ Conventions, fixed once so every strategy in this repo is comparable:
 
 * `w[t]` is the target weight decided from data up to and INCLUDING the close of
   bar `t`, and traded at that close. It earns bar `t+1`'s return.
+  This legacy idealized close-fill convention is NOT valid for after-close
+  publications; use the separate AFPR next-open event study for those.
 * Returns are **excess of cash**: `exret = asset_return - rf`. Capital not in the
   market sits in T-bills and therefore contributes exactly zero. That is the
   whole point -- it stops a strategy from buying Sharpe by simply being flat.
@@ -89,7 +91,9 @@ def run(w: pd.DataFrame | pd.Series, exret: pd.DataFrame | pd.Series,
     if (w.fillna(0).sum(axis=1) > 1 + 1e-9).any():
         raise ValueError("gross exposure >1 -- no leverage")
     gross = (w.shift(1) * x).sum(axis=1)
-    cost = w.diff().abs().sum(axis=1).shift(1) * cost_bps / 1e4
+    changes = w.fillna(0).diff()
+    changes.iloc[0] = w.iloc[0].fillna(0)  # start in cash
+    cost = changes.abs().sum(axis=1).shift(1) * cost_bps / 1e4
     out = (gross - cost)
     # the first bar has no prior weight to trade from and no position to earn on
     return out.iloc[1:]
@@ -107,7 +111,7 @@ def stats(net: pd.Series, w: pd.DataFrame | pd.Series | None = None,
         "ann_excess": float(eq[-1] ** (periods / n) - 1),
         "ann_vol": float(sd * np.sqrt(periods)),
         "sharpe": float("nan") if sd < 1e-12 else float(r.mean() / sd * np.sqrt(periods)),
-        "max_dd": float((eq / np.maximum.accumulate(eq) - 1).min()),
+        "max_dd": float((eq / np.maximum.accumulate(np.r_[1.0, eq])[1:] - 1).min()),
         "skew": float(pd.Series(r).skew()),
         "worst_day": float(r.min()),
     }
@@ -211,8 +215,8 @@ def demo():
     net = run(w, x, cost_bps=0)
     # w[0]=1 earns x[1]; w[2]=0 earns nothing of x[3]
     assert np.allclose(net.to_numpy(), [-0.02, 0.03, 0.0, 0.0, 0.02]), net.to_numpy()
-    # a costed round trip loses exactly 2 * bps
-    assert abs(run(w, x, cost_bps=10).sum() - (net.sum() - 2 * 10 / 1e4)) < 1e-12
+    # entry, exit, re-entry cost three crossings; no terminal liquidation
+    assert abs(run(w, x, cost_bps=10).sum() - (net.sum() - 3 * 10 / 1e4)) < 1e-12
 
     # LEAKAGE: a weight built from tomorrow's return must be the ONLY thing that
     # scores perfectly. If a 1-bar shift does not destroy the edge, the harness

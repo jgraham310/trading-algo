@@ -173,7 +173,7 @@ def _sharpe(r, periods: int = TRADING_DAYS) -> float:
 
 def _max_dd(r) -> float:
     eq = np.cumprod(1 + r)
-    return float((eq / np.maximum.accumulate(eq) - 1).min())
+    return float((eq / np.maximum.accumulate(np.r_[1.0, eq])[1:] - 1).min())
 
 
 def report(m: dict) -> str:
